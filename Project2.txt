@@ -1,0 +1,145 @@
+##clear the R environment
+rm(list = ls(all.names = TRUE)) #will clear all objects includes hidden objects.
+gc() #free up memrory and report the memory usage.
+getwd()
+
+setwd("C:/Users/kgame/Downloads/Class. Forecasting")
+
+library('openxlsx')
+library("gdata")
+data<-read.xlsx("NYSEReturns.xlsx")
+ 
+###############################################################################################################################
+##Question 1: 	Stationary or nonstationary: Test variables 〖RETURN〗_t  and 〖RATE〗_t are stationary or not based on ADF test.
+
+# Plot return
+data$ENTRY=as.Date(as.character(data$ENTRY))
+plot(data$RETURN)
+
+library("urca")
+library("tidyr")
+library("dplyr")
+
+data %>% drop_na(RATE)
+data = data %>% dplyr::filter(!is.na(RETURN))
+
+
+## Tau - Non-Stationary
+ur.return=ur.df(data$RETURN, type = c("none"),selectlags = c("AIC"))
+summary(ur.return)
+
+## Tau - Non-Stationary, Phi1 - no drift
+ur.return=ur.df(data$RETURN, type = c("drift"),selectlags = c("AIC"))
+summary(ur.return)
+
+## Tau - Non-Stationary, no drift, no trend
+ur.return=ur.df(data$RETURN, type = c("trend"),selectlags = c("AIC"))
+summary(ur.return)
+
+
+# Plot rate
+
+plot(data$RATE)
+data = data %>% dplyr::filter(!is.na(RATE))
+
+library("urca")
+
+## Tau - Stationary
+ur.rate=ur.df(data$RATE, type = c("none"),selectlags = c("AIC"))
+summary(ur.rate)
+
+## Tau - Stationary, there is drift
+ur.rate=ur.df(data$RATE, type = c("drift"),selectlags = c("AIC"))
+summary(ur.rate)
+
+
+## Tau - Stationary, there is drift and there is trend
+ur.rate=ur.df(data$RATE, type = c("trend"),selectlags = c("AIC"))
+summary(ur.rate)
+
+###############################################################################################################################
+##Question 2: Model specification (Mean equation): Based AIC and BIC, ACF and PACF, t-stat, specify an ARMA model for 〖RATE〗_t. 
+
+autocorr <- ts(data$RATE, start = 1, frequency = 1)
+is.ts(autocorr)
+
+
+
+autocorrelation <- acf(autocorr)
+autocorrelation
+
+# Partial autocorrelation
+partial_autocorrelation <- pacf(autocorr)
+partial_autocorrelation
+
+
+library(forecast)
+library ("TSstudio")
+
+
+## ARIMA model chosen - AR(2)
+fit <- auto.arima(data$RATE)
+fit
+
+
+###############################################################################################################################
+##Question 3: Model estimation (Mean equation): If a AR(2) model has been determined, please estimate this AR(2) model.
+
+install.packages("Hmisc")
+library("Hmisc")
+
+# Just for AR test
+data$lag1 <- lag(data$RATE, +1)
+data$lag2 <- lag(data$RATE, +2)
+fit2 <- lm(data$RATE ~ lag1 + lag2, data = data)
+summary(fit2)
+
+
+
+
+###############################################################################################################################
+##Question 4: Residual diagnostic: Test whether there is serial correlation or ARCH effects in the residual.
+
+# There is autocorrelation
+checkresiduals(fit2)
+res <- residuals(fit2)
+
+Box.test(residuals(fit2), lag = 7, type = "Ljung-Box")
+
+
+# ARCH test - There is ARCH effects
+library("FinTS")
+ArchTest(residuals(fit2), lag = 4)
+
+
+###############################################################################################################################
+##Question 5: E.	Alternative estimation of the models (Variance equation): 
+#i.	With AR(2) as mean equation, estimate a GARCH(1,1) error process from maximum likelihood estimation assuming normality.
+#ii.	With AR(2) as mean equation, estimate a GARCH(1,1) error process from maximum likelihood estimation assuming t-distribution.
+
+library(rugarch)
+spec.ar2garch11n = ugarchspec(mean.model=list(armaOrder = c(2,0)),
+                              variance.model=list(garchOrder=c(1,1)),
+                              distribution.model="norm")
+
+
+fit.ar2garch11n=ugarchfit(spec.ar2garch11n,data = data$RATE)
+fit.ar2garch11n
+
+spec.ar2garch11t = ugarchspec(mean.model=list(armaOrder = c(2,0)),
+                             variance.model=list(garchOrder=c(1,1)),
+                             distribution.model="std")
+
+
+fit.ar2garch11t=ugarchfit(spec.ar2garch11t,data = data$RATE)
+fit.ar2garch11t
+
+
+
+###############################################################################################################################
+##Question 6: F. The asymmetric models: 
+####Asymmetric GARCH
+##threshold GARCH, powerGARCH with delta=1
+spec.ar2garch11n = ugarchspec(mean.model=list(armaOrder=c(2,0)),
+                              variance.model=list(garchOrder=c(1,1),model="apARCH"),
+                              fixed.pars=list(delta=1))
